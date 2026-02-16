@@ -1,0 +1,156 @@
+================================================================================
+                  TrendAI v10 PRO - QUICK START GUIDE
+================================================================================
+
+INSTALLATION (5 MINUTES)
+------------------------
+
+1. COPY MQL5 FILES
+   - Copy entire mt5_ea/ folder to:
+     MT5_DATA_FOLDER/MQL5/Experts/TrendAI_v10/
+   
+2. DEPLOY MODEL FILES (Optional for ML features)
+   - Copy models/*.json to:
+     MT5_DATA_FOLDER/MQL5/Files/models/
+   
+3. LOAD ON CHART
+   - Open MT5
+   - Open USDJPY chart
+   - Set timeframe to M15
+   - Drag TrendAI_v10.mq5 onto chart
+   - Click "Allow DLL imports" and "Allow WebRequests"
+   - Enable AutoTrading (toolbar button)
+
+4. VERIFY
+   Check Experts tab for:
+   ✓ "TrendAI v10 PRO - Initialization Complete"
+   ✓ "System Status: ACTIVE"
+   ✓ Dashboard appears on chart
+
+FIRST TIME CONFIGURATION
+-------------------------
+
+RECOMMENDED SETTINGS FOR BEGINNERS:
+
+Risk Management:
+- InpFixedLotSize = 0.01 (DO NOT CHANGE)
+- InpMaxTradesPerSession = 2 (conservative)
+- InpDailyLossLimitPct = 2.5 (tight safety)
+- InpMaxSpreadPips = 3.0
+- InpCooldownCandles = 4
+
+ML Model:
+- InpMinProbability = 0.75 (higher threshold)
+
+Session Filters:
+- InpTradeAsia = false (skip lower liquidity)
+- InpTradeLondon = true (recommended)
+- InpTradeNewYork = true (recommended)
+
+UI:
+- InpShowDashboard = true
+- InpShowTelemetry = true
+- InpShowAIOverlay = true
+
+TRAINING ML MODEL (Optional)
+-----------------------------
+
+If you want ML predictions (recommended):
+
+1. Install Python packages:
+   pip install pandas numpy scikit-learn lightgbm onnx onnxmltools
+
+2. Collect historical data (requires MT5 Python package):
+   python python/collect_data.py
+
+3. Train model:
+   cd python
+   python train_model.py
+
+4. Export to ONNX:
+   python export_onnx.py
+
+5. Copy generated files:
+   cp ../models/trendai_v10.onnx [MT5_FILES]/models/
+   cp ../models/scaler.json [MT5_FILES]/models/
+
+6. Reload EA on MT5 chart
+
+RUNNING WITHOUT ML MODEL
+-------------------------
+
+The EA can run using Ichimoku-only signals:
+- System will display "Model not loaded" warning
+- Will use directional bias from Ichimoku
+- Higher probability threshold automatically applied
+- Still fully functional with risk management
+
+MONITORING YOUR EA
+------------------
+
+Dashboard Indicators:
+- GREEN "ACTIVE" = System trading normally
+- YELLOW "COOLDOWN" = Temporary pause after loss
+- RED "LOCKED" = Daily loss limit reached (waits for next day)
+- RED "DRAWDOWN" = Maximum drawdown exceeded (manual review needed)
+
+Telemetry Panel Shows:
+- Today's P&L in dollars and percentage
+- Win rate statistics
+- AI accuracy (if model loaded)
+- Current drawdown level
+
+TROUBLESHOOTING
+---------------
+
+Problem: No dashboard appears
+Solution: Check InpShowDashboard = true, adjust InpDashboardX/Y position
+
+Problem: "Wrong symbol/timeframe" error
+Solution: Must use USDJPY M15 chart only
+
+Problem: No trades opening
+Solution: 
+- Check Risk Status is "ACTIVE"
+- Verify session filters enabled
+- Check if in cooldown period
+- Confirm spread is acceptable (<3 pips)
+
+Problem: Model not loading
+Solution: This is OK - EA works without ML using Ichimoku only
+To enable ML: Follow "TRAINING ML MODEL" steps above
+
+BEST PRACTICES
+--------------
+
+✓ Start on demo account
+✓ Test for at least 1 week before live
+✓ Never modify lot size (keep 0.01)
+✓ Don't change risk parameters mid-session
+✓ Monitor dashboard regularly
+✓ Review trades daily in Experts tab
+✓ Keep MT5 running 24/5 (use VPS recommended)
+
+SUPPORT
+-------
+
+Documentation: See docs/ folder
+- architecture.md - System design
+- dashboard_design.md - UI guide
+- risk_management.md - Risk rules
+
+GitHub: https://github.com/babo-crypto/DollarJapan
+Issues: Open ticket on GitHub for problems
+
+SAFETY REMINDERS
+----------------
+
+⚠️ This is live trading - real money at risk
+⚠️ Start with minimum account size ($500)
+⚠️ Only trade with risk capital
+⚠️ Monitor system regularly
+⚠️ Past performance ≠ future results
+
+================================================================================
+                         GOOD LUCK AND TRADE SAFELY!
+================================================================================
