@@ -444,8 +444,73 @@ void ManageOpenPositions()
    // Implement trailing stop using Kijun if enabled
    if(InpUseTrailingStop)
    {
-      // TODO: Implement Kijun trailing stop logic
-      // This would require getting current Kijun value and adjusting SL
+      // Get position type
+      long position_type = PositionGetInteger(POSITION_TYPE);
+      double current_sl = PositionGetDouble(POSITION_SL);
+      double current_price = (position_type == POSITION_TYPE_BUY) ? 
+                            SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
+                            SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      // Get Kijun-sen value for trailing
+      double kijun = 0.0;
+      int handle = iIchimoku(_Symbol, _Period, 9, 26, 52);
+      if(handle != INVALID_HANDLE)
+      {
+         double kijun_buffer[];
+         ArraySetAsSeries(kijun_buffer, true);
+         if(CopyBuffer(handle, 1, 0, 1, kijun_buffer) > 0)
+         {
+            kijun = kijun_buffer[0];
+         }
+         IndicatorRelease(handle);
+      }
+      
+      // Apply trailing logic
+      if(kijun > 0)
+      {
+         bool should_modify = false;
+         double new_sl = current_sl;
+         
+         if(position_type == POSITION_TYPE_BUY)
+         {
+            // For buy: move SL up to Kijun if Kijun is above current SL
+            if(kijun > current_sl && kijun < current_price)
+            {
+               new_sl = kijun;
+               should_modify = true;
+            }
+         }
+         else // SELL
+         {
+            // For sell: move SL down to Kijun if Kijun is below current SL
+            if(kijun < current_sl && kijun > current_price)
+            {
+               new_sl = kijun;
+               should_modify = true;
+            }
+         }
+         
+         // Modify stop loss if needed
+         if(should_modify)
+         {
+            MqlTradeRequest request = {};
+            MqlTradeResult result = {};
+            
+            request.action = TRADE_ACTION_SLTP;
+            request.symbol = _Symbol;
+            request.position = ticket;
+            request.sl = NormalizeDouble(new_sl, _Digits);
+            request.tp = PositionGetDouble(POSITION_TP);
+            
+            if(OrderSend(request, result))
+            {
+               if(result.retcode == TRADE_RETCODE_DONE)
+               {
+                  Print("✓ Trailing stop updated to Kijun: ", new_sl);
+               }
+            }
+         }
+      }
    }
 }
 
