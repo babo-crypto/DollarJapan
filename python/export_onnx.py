@@ -19,8 +19,10 @@ import pickle
 import json
 import onnx
 import onnxmltools
-from onnxconverter_common import FloatTensorType
-from skl2onnx import to_onnx
+try:
+    from onnxmltools.convert.common.data_types import FloatTensorType
+except ImportError:
+    from onnxconverter_common import FloatTensorType
 import warnings
 warnings.filterwarnings('ignore')
 
