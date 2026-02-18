@@ -67,7 +67,9 @@ public:
    void     Update(string symbol, string timeframe, string session, 
                    double probability, double spread, double adx,
                    string cloud_status, bool trading_window, 
-                   int trade_count, string risk_status);
+                   int trade_count, string risk_status,
+                   CONFIDENCE_LEVEL confidence_level, double current_probability,
+                   CRiskEngine &risk_engine);
    
    //--- Configuration
    void     SetPosition(int x, int y);
@@ -274,7 +276,9 @@ void CDashboardUI::UpdateLabel(string name, string text, color clr)
 void CDashboardUI::Update(string symbol, string timeframe, string session,
                           double probability, double spread, double adx,
                           string cloud_status, bool trading_window,
-                          int trade_count, string risk_status)
+                          int trade_count, string risk_status,
+                          CONFIDENCE_LEVEL confidence_level, double current_probability,
+                          CRiskEngine &risk_engine)
 {
    // Update internal state
    m_symbol = symbol;
@@ -342,17 +346,17 @@ void CDashboardUI::Update(string symbol, string timeframe, string session,
    UpdateLabel("RiskValue", risk_status, risk_color);
    
    // v11: AI Confidence (alternative display based on actual level)
-   string conf_str = GetConfidenceString(g_current_confidence);
-   color conf_color2 = (g_current_confidence >= 3) ? m_bullish_color :  // HIGH
-                      (g_current_confidence >= 2) ? C'241,196,15' :     // MEDIUM
-                      (g_current_confidence >= 1) ? C'255,165,0' : m_neutral_color; // LOW/NONE
+   string conf_str = GetConfidenceString(confidence_level);
+   color conf_color2 = (confidence_level >= 3) ? m_bullish_color :  // HIGH
+                      (confidence_level >= 2) ? C'241,196,15' :     // MEDIUM
+                      (confidence_level >= 1) ? C'255,165,0' : m_neutral_color; // LOW/NONE
    
    UpdateLabel("ConfidenceValue2", 
-               conf_str + " (" + DoubleToString(g_current_probability * 100, 1) + "%)", 
+               conf_str + " (" + DoubleToString(current_probability * 100, 1) + "%)", 
                conf_color2);
    
    // v11: Loss Streak
-   int losses = g_RiskEngine.GetConsecutiveLosses();
+   int losses = risk_engine.GetConsecutiveLosses();
    color loss_color = (losses >= 2) ? m_bearish_color : m_neutral_color;
    
    UpdateLabel("LossStreakValue", IntegerToString(losses) + " / 3", loss_color);

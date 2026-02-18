@@ -303,7 +303,7 @@ void CheckForTradingSignals()
       return;
    
    // Check kill-switch before execution (v11)
-   if(!g_RiskEngine.CheckKillSwitch())
+   if(!g_RiskEngine.CheckKillSwitch(g_ONNXRunner))
    {
       Print("Trade blocked by kill-switch: ", g_RiskEngine.GetRiskStateString());
       return;
@@ -627,7 +627,8 @@ void UpdateDashboard()
    
    // Update dashboard
    g_Dashboard.Update(_Symbol, "M15", session_name, probability, spread, adx,
-                      cloud_status, trading_window, trade_count, risk_status);
+                      cloud_status, trading_window, trade_count, risk_status,
+                      g_current_confidence, g_current_probability, g_RiskEngine);
 }
 
 //+------------------------------------------------------------------+
