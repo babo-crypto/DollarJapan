@@ -22,6 +22,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.preprocessing import StandardScaler
 import json
 import pickle
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Tuple, Optional
 import warnings
@@ -560,32 +561,26 @@ def calculate_trading_metrics(df: pd.DataFrame) -> Dict:
 
 def main():
     """
-    Example training workflow with walk-forward validation (v11).
+    Training workflow with walk-forward validation (v11).
     """
     print("=" * 60)
     print("TrendAI v11 Model Training Module")
     print("=" * 60)
     
-    # Note: This is an example. In production, load real historical data
-    print("\nNote: This example uses synthetic data.")
-    print("In production, load real USDJPY M15 historical data.")
+    # Try to load real historical data
+    data_path = os.path.join(os.path.dirname(__file__), 'data', 'usdjpy_m15.csv')
     
-    # Create synthetic data
-    dates = pd.date_range('2024-01-01', periods=10000, freq='15T')
-    np.random.seed(42)
-    
-    base_price = 150.0
-    price_changes = np.cumsum(np.random.randn(10000) * 0.01)
-    
-    df = pd.DataFrame({
-        'timestamp': dates,
-        'open': base_price + price_changes,
-        'high': base_price + price_changes + np.abs(np.random.randn(10000) * 0.02),
-        'low': base_price + price_changes - np.abs(np.random.randn(10000) * 0.02),
-        'close': base_price + price_changes,
-        'tick_volume': np.random.randint(100, 1000, 10000),
-        'spread': np.random.uniform(0.5, 3.0, 10000)
-    })
+    if os.path.exists(data_path):
+        print(f"\nLoading real historical data from {data_path}...")
+        from collect_data import load_data
+        df = load_data(data_path)
+        print(f"✓ Loaded {len(df)} candles of real USDJPY M15 data")
+    else:
+        print("\n⚠️  No historical data found at data/usdjpy_m15.csv")
+        print("   Run 'python collect_data.py' first to download real data.")
+        print("   Falling back to realistic synthetic data for now...\n")
+        from collect_data import generate_realistic_usdjpy
+        df = generate_realistic_usdjpy()
     
     # Initialize trainer
     trainer = ModelTrainer(model_type='lightgbm')
