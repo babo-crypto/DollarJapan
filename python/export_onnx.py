@@ -244,37 +244,105 @@ class ONNXExporter:
 
 def main():
     """
-    Example export workflow.
+    Auto-detect and export trained models to ONNX.
     """
+    import os
+    
     print("=" * 60)
     print("TrendAI v10 ONNX Export Module")
     print("=" * 60)
     
-    # Note about prerequisites
+    # Define base directory (relative to this script)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    models_dir = os.path.join(script_dir, '..', 'models')
+    models_dir = os.path.abspath(models_dir)
+    
+    # Auto-detect model file (try lightgbm first, then xgboost)
+    model_path = None
+    model_type = None
+    
+    lgb_path = os.path.join(models_dir, 'trendai_v10_lgb.pkl')
+    xgb_path = os.path.join(models_dir, 'trendai_v10_xgb.pkl')
+    
+    if os.path.exists(lgb_path):
+        model_path = lgb_path
+        model_type = 'lightgbm'
+        print(f"\n✓ Found LightGBM model: {lgb_path}")
+    elif os.path.exists(xgb_path):
+        model_path = xgb_path
+        model_type = 'xgboost'
+        print(f"\n✓ Found XGBoost model: {xgb_path}")
+    
+    # Auto-detect scaler file
+    scaler_path = os.path.join(models_dir, 'scaler.json')
+    scaler_exists = os.path.exists(scaler_path)
+    
+    if scaler_exists:
+        print(f"✓ Found scaler: {scaler_path}")
+    else:
+        print(f"⚠ Scaler not found: {scaler_path}")
+    
+    # If model exists, perform export
+    if model_path and scaler_exists:
+        print("\n" + "=" * 60)
+        print("Starting automatic export...")
+        print("=" * 60)
+        
+        try:
+            # Create exporter
+            exporter = ONNXExporter()
+            
+            # Load model
+            exporter.load_model(model_path, model_type=model_type)
+            
+            # Load scaler
+            exporter.load_scaler(scaler_path)
+            
+            # Export all files
+            exporter.export_all(output_dir=models_dir, model_name='trendai_v10')
+            
+            print("\n✓ Export completed successfully!")
+            return
+            
+        except Exception as e:
+            print(f"\n✗ Export failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+    
+    # If files don't exist, show usage instructions
+    print("\n" + "=" * 60)
+    print("Model or scaler files not found!")
+    print("=" * 60)
+    
     print("\nPrerequisites:")
     print("  1. Trained model saved as pickle file")
     print("  2. Scaler parameters saved as JSON")
     print("  3. Required packages: onnx, onnxmltools, skl2onnx")
     
-    print("\nExample Usage:")
+    print("\nExpected files:")
+    print(f"  - Model: {lgb_path}")
+    print(f"    OR:    {xgb_path}")
+    print(f"  - Scaler: {scaler_path}")
+    
+    print("\nManual Usage:")
     print("-" * 60)
     print("""
 # Load and export model
 exporter = ONNXExporter()
 
 # Load trained model
-exporter.load_model('../models/trendai_v10_lgb.pkl', model_type='lightgbm')
+exporter.load_model('models/trendai_v10_lgb.pkl', model_type='lightgbm')
 
 # Load scaler
-exporter.load_scaler('../models/scaler.json')
+exporter.load_scaler('models/scaler.json')
 
 # Export all files
-exporter.export_all(output_dir='../models', model_name='trendai_v10')
+exporter.export_all(output_dir='models', model_name='trendai_v10')
     """)
     
     print("\n" + "=" * 60)
-    print("Note: This script requires a pre-trained model.")
-    print("Run train_model.py first to generate the model files.")
+    print("Note: Run train_model.py first to generate the model files.")
     print("=" * 60)
 
 
