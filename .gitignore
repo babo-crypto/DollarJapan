@@ -1,2 +1,11 @@
 __pycache__/
 *.pyc
+
+# Python data files
+python/data/*.csv
+
+# Generated models (user should train their own)
+models/*.pkl
+models/scaler.json
+models/feature_importance.csv
+python/models/*.csv
