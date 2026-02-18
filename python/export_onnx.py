@@ -245,6 +245,10 @@ class ONNXExporter:
 def main():
     """
     Auto-detect and export trained models to ONNX.
+    
+    This function automatically searches for trained model files and scaler
+    parameters, then performs the ONNX export if files are found. If files
+    are not found, it displays usage instructions.
     """
     import os
     
@@ -264,14 +268,15 @@ def main():
     lgb_path = os.path.join(models_dir, 'trendai_v10_lgb.pkl')
     xgb_path = os.path.join(models_dir, 'trendai_v10_xgb.pkl')
     
+    print()  # Add spacing before model detection messages
     if os.path.exists(lgb_path):
         model_path = lgb_path
         model_type = 'lightgbm'
-        print(f"\n✓ Found LightGBM model: {lgb_path}")
+        print(f"✓ Found LightGBM model: {lgb_path}")
     elif os.path.exists(xgb_path):
         model_path = xgb_path
         model_type = 'xgboost'
-        print(f"\n✓ Found XGBoost model: {xgb_path}")
+        print(f"✓ Found XGBoost model: {xgb_path}")
     
     # Auto-detect scaler file
     scaler_path = os.path.join(models_dir, 'scaler.json')
