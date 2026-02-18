@@ -105,7 +105,8 @@ bool CONNXRunner::LoadModel(string model_path, string scaler_path)
    }
    
    // Load the ONNX model
-   m_model_handle = OnnxCreateFromFile(model_path, ONNX_DEFAULT);
+   // OnnxCreate(string filename, uint flags) — use 0 for default flags
+   m_model_handle = OnnxCreate(model_path, 0);
    
    if(m_model_handle == INVALID_HANDLE)
    {
@@ -309,8 +310,7 @@ double CONNXRunner::Predict(double &features[])
       return 0.0;
    }
 
-   // Define output shape [1, 1] for single probability output
-   // Try [1,2] first for binary classification, fall back to [1,1]
+   // Define output shape - try [1,2] for binary classification, fall back to [1,1]
    ulong output_shape_2[] = {1, 2};
    ulong output_shape_1[] = {1, 1};
    bool output_is_binary = OnnxSetOutputShape(m_model_handle, 0, output_shape_2);
@@ -322,7 +322,7 @@ double CONNXRunner::Predict(double &features[])
       }
    }
 
-   // Prepare input as vectorf (float type required by ONNX)
+   // Prepare input as matrixf (float type required by ONNX)
    matrixf input_matf;
    input_matf.Init(1, m_num_features);
    for(int i = 0; i < m_num_features; i++)
@@ -330,15 +330,16 @@ double CONNXRunner::Predict(double &features[])
       input_matf[0][i] = (float)normalized_features[i];
    }
 
-   // Prepare output
+   // Prepare output - initialize before OnnxRun
    matrixf output_matf;
    if(output_is_binary)
       output_matf.Init(1, 2);
    else
       output_matf.Init(1, 1);
 
-   // Run ONNX inference using the correct API
-   if(!OnnxRun(m_model_handle, ONNX_DEFAULT, input_matf, output_matf))
+   // Run ONNX inference
+   // OnnxRun(long handle, ulong flags, ...) — flags=0 for default
+   if(!OnnxRun(m_model_handle, 0, input_matf, output_matf))
    {
       Print("ERROR: ONNX inference failed. Error code: ", GetLastError());
       return 0.0;
@@ -357,10 +358,12 @@ double CONNXRunner::Predict(double &features[])
 
    if(output_matf.Cols() == 2)
    {
+      // Two-class output: take the positive class probability
       probability = (double)output_matf[0][1];
    }
    else if(output_matf.Cols() == 1)
    {
+      // Single output: direct probability
       probability = (double)output_matf[0][0];
    }
    else
