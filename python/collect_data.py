@@ -177,7 +177,7 @@ def generate_realistic_usdjpy(num_candles: int = 50000) -> pd.DataFrame:
     
     # Generate timestamps (15-minute intervals)
     start_date = datetime(2023, 1, 1)
-    dates = pd.date_range(start_date, periods=num_candles, freq='15T')
+    dates = pd.date_range(start_date, periods=num_candles, freq='15min')
     
     # Initialize price array
     base_price = 152.0  # Realistic USDJPY level
@@ -186,11 +186,12 @@ def generate_realistic_usdjpy(num_candles: int = 50000) -> pd.DataFrame:
     
     # Generate price movements with trending and ranging regimes
     # Use regime switching to create realistic market behavior
-    regime_length = 500  # candles per regime (≈5 days)
+    regime_length = 200  # shorter regimes to create more variety (≈2 days for M15)
     num_regimes = num_candles // regime_length + 1
     
     # Define regimes: 0=ranging, 1=uptrend, 2=downtrend
-    regimes = np.random.choice([0, 1, 2], size=num_regimes, p=[0.4, 0.3, 0.3])
+    # More trending regimes to generate continuation signals (70% trending)
+    regimes = np.random.choice([0, 1, 2], size=num_regimes, p=[0.30, 0.35, 0.35])
     
     idx = 0
     for regime_idx, regime in enumerate(regimes):
@@ -203,28 +204,30 @@ def generate_realistic_usdjpy(num_candles: int = 50000) -> pd.DataFrame:
                 if i > 0:
                     # Small mean-reverting movements
                     center = prices[max(0, i-100):i].mean() if i > 100 else base_price
-                    drift = (center - prices[i-1]) * 0.02
-                    volatility = np.random.randn() * 0.03  # ±3 pips per candle
+                    drift = (center - prices[i-1]) * 0.05
+                    volatility = np.random.randn() * 0.05  # ±5 pips per candle
                     prices[i] = prices[i-1] + drift + volatility
                     
         elif regime == 1:  # Uptrend
-            # Consistent upward movements
+            # Strong upward movements to generate continuation signals
+            # To get 30 pips in 10 candles, need minimum 3 pips/candle
+            # Using 5-8 pips/candle to ensure we hit the threshold reliably
             for i in range(regime_start, regime_end):
                 if i > 0:
-                    trend = 0.04  # +4 pips per candle on average
-                    volatility = np.random.randn() * 0.05  # ±5 pips per candle
+                    trend = 0.05 + np.random.exponential(0.03)  # +5-11 pips per candle on average
+                    volatility = np.random.randn() * 0.02  # ±2 pips per candle
                     prices[i] = prices[i-1] + trend + volatility
                     
         else:  # Downtrend
-            # Consistent downward movements
+            # Strong downward movements to generate continuation signals
             for i in range(regime_start, regime_end):
                 if i > 0:
-                    trend = -0.04  # -4 pips per candle on average
-                    volatility = np.random.randn() * 0.05  # ±5 pips per candle
+                    trend = -0.05 - np.random.exponential(0.03)  # -5 to -11 pips per candle on average
+                    volatility = np.random.randn() * 0.02  # ±2 pips per candle
                     prices[i] = prices[i-1] + trend + volatility
     
-    # Keep prices in realistic range (147-157)
-    prices = np.clip(prices, 147.0, 157.0)
+    # Keep prices in realistic but wider range (140-165)
+    prices = np.clip(prices, 140.0, 165.0)
     
     # Generate OHLC from close prices
     df_data = []
