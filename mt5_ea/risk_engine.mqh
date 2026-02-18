@@ -125,7 +125,7 @@ public:
    int      GetConsecutiveLosses() { return m_consecutive_losses; }
    
    //--- Kill-switch system (v11)
-   bool     CheckKillSwitch();
+   bool     CheckKillSwitch(CONNXRunner &onnx_runner);
    void     SetMaxConsecutiveLosses(int max_losses) { m_max_consecutive_losses = max_losses; }
    void     SetMaxAllowedSpread(double max_spread) { m_max_allowed_spread = max_spread; }
    void     SetMaxInferenceLatency(double max_latency_ms) { m_max_inference_latency_ms = max_latency_ms; }
@@ -546,10 +546,10 @@ double CRiskEngine::GetCurrentDrawdown()
 //+------------------------------------------------------------------+
 //| Check kill-switch conditions (v11)                               |
 //+------------------------------------------------------------------+
-bool CRiskEngine::CheckKillSwitch()
+bool CRiskEngine::CheckKillSwitch(CONNXRunner &onnx_runner)
 {
    // 1. ONNX health check
-   if(!g_ONNXRunner.IsModelLoaded())
+   if(!onnx_runner.IsModelLoaded())
    {
       Alert("🚨 KILL-SWITCH: ONNX model failed to load!");
       m_current_state = RISK_STATE_LOCKED_ONNX_FAIL;
@@ -568,7 +568,7 @@ bool CRiskEngine::CheckKillSwitch()
    }
    
    // 3. Latency watchdog
-   double avg_latency = g_ONNXRunner.GetAvgInferenceTime();
+   double avg_latency = onnx_runner.GetAvgInferenceTime();
    if(avg_latency > m_max_inference_latency_ms)
    {
       Alert("🚨 KILL-SWITCH: AI inference too slow: ", DoubleToString(avg_latency, 1), "ms");

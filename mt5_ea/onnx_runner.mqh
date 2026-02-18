@@ -105,8 +105,8 @@ bool CONNXRunner::LoadModel(string model_path, string scaler_path)
    }
    
    // Load the ONNX model
-   // OnnxCreate(string filename, uint flags) — use 0 for default flags
-   m_model_handle = OnnxCreate(model_path, 0);
+   // OnnxCreateFromFile(string filename, uint flags) — use ONNX_DEFAULT for default flags
+   m_model_handle = OnnxCreateFromFile(model_path, ONNX_DEFAULT);
    
    if(m_model_handle == INVALID_HANDLE)
    {
@@ -338,8 +338,8 @@ double CONNXRunner::Predict(double &features[])
       output_matf.Init(1, 1);
 
    // Run ONNX inference
-   // OnnxRun(long handle, ulong flags, ...) — flags=0 for default
-   if(!OnnxRun(m_model_handle, 0, input_matf, output_matf))
+   // OnnxRun(long handle, ulong flags, ...) — flags=ONNX_DEFAULT for default
+   if(!OnnxRun(m_model_handle, ONNX_DEFAULT, input_matf, output_matf))
    {
       Print("ERROR: ONNX inference failed. Error code: ", GetLastError());
       return 0.0;
