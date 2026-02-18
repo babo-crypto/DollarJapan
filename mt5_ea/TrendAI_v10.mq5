@@ -29,6 +29,16 @@
 #include "chart_setup.mqh"
 
 //+------------------------------------------------------------------+
+//| AI Confidence Level Enumeration (v11)                            |
+//+------------------------------------------------------------------+
+enum CONFIDENCE_LEVEL {
+   CONFIDENCE_NONE,
+   CONFIDENCE_LOW,
+   CONFIDENCE_MEDIUM,
+   CONFIDENCE_HIGH
+};
+
+//+------------------------------------------------------------------+
 //| Input Parameters                                                  |
 //+------------------------------------------------------------------+
 
@@ -47,6 +57,12 @@ input group "=== ML MODEL ==="
 input string   InpModelPath = "models/trendai_v10.onnx"; // ONNX Model Path
 input string   InpScalerPath = "models/scaler.json";     // Scaler Path
 input double   InpMinProbability = 0.72;                 // Min Probability Threshold
+
+// === AI Confidence Parameters (v11) ===
+input group "=== AI CONFIDENCE ==="
+input double   InpMinConfidenceLow    = 0.72;   // Minimum confidence (skip below)
+input double   InpConfidenceMedium    = 0.80;   // Medium confidence threshold
+input double   InpConfidenceHigh      = 0.90;   // High confidence threshold
 
 // === Trading Parameters ===
 input group "=== TRADING LOGIC ==="
@@ -92,6 +108,10 @@ double            g_total_profit = 0.0;
 // Trade tracking
 ulong             g_current_ticket = 0;
 datetime          g_trade_open_time = 0;
+
+// AI Confidence tracking (v11)
+CONFIDENCE_LEVEL  g_current_confidence = CONFIDENCE_NONE;
+double            g_current_probability = 0.0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
@@ -260,6 +280,20 @@ void CheckForTradingSignals()
       probability = 0.75; // Default high confidence for Ichimoku-only signals
    }
    
+   // Evaluate confidence (v11)
+   CONFIDENCE_LEVEL confidence = EvaluateConfidence(probability);
+   
+   // Store for dashboard display
+   g_current_confidence = confidence;
+   g_current_probability = probability;
+   
+   // Decision logic - skip if confidence too low (v11)
+   if(confidence == CONFIDENCE_NONE)
+   {
+      // Skip trade - confidence too low
+      return;
+   }
+   
    // Get current market conditions
    double spread_pips = g_FeatureBuilder.GetSpread();
    int session_id = (int)g_FeatureBuilder.GetSessionID();
@@ -267,6 +301,13 @@ void CheckForTradingSignals()
    // Check if session is allowed
    if(!IsSessionAllowed(session_id))
       return;
+   
+   // Check kill-switch before execution (v11)
+   if(!g_RiskEngine.CheckKillSwitch())
+   {
+      Print("Trade blocked by kill-switch: ", g_RiskEngine.GetRiskStateString());
+      return;
+   }
    
    // Check risk engine permission
    if(!g_RiskEngine.AllowTrade(session_id, spread_pips))
@@ -279,14 +320,14 @@ void CheckForTradingSignals()
    if(probability < InpMinProbability)
       return;
    
-   // Execute trade based on signal
+   // Execute trade based on signal with confidence-adjusted parameters (v11)
    if(signal_direction == 1) // Buy signal
    {
-      ExecuteBuyOrder(probability);
+      ExecuteBuyOrder(probability, confidence);
    }
    else if(signal_direction == -1) // Sell signal
    {
-      ExecuteSellOrder(probability);
+      ExecuteSellOrder(probability, confidence);
    }
 }
 
@@ -318,14 +359,28 @@ int GetIchimokuBias()
 //+------------------------------------------------------------------+
 //| Execute buy order                                                 |
 //+------------------------------------------------------------------+
-void ExecuteBuyOrder(double probability)
+void ExecuteBuyOrder(double probability, CONFIDENCE_LEVEL confidence)
 {
    double entry_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double atr = g_FeatureBuilder.GetATRNormalized() * entry_price / 10000.0;
    
+   // Confidence-based SL/TP adjustments (v11)
+   double sl_multiplier = InpSLMultiplier;
+   double tp_multiplier = InpTPRatio;
+   
+   if(confidence == CONFIDENCE_LOW)
+   {
+      sl_multiplier *= 0.8;  // Tighter SL
+      tp_multiplier *= 1.2;  // Wider TP (better R:R required)
+   }
+   else if(confidence == CONFIDENCE_HIGH)
+   {
+      tp_multiplier *= 1.5;  // Let winners run
+   }
+   
    // Calculate SL and TP
-   double sl = entry_price - (atr * InpSLMultiplier);
-   double tp = entry_price + (atr * InpSLMultiplier * InpTPRatio);
+   double sl = entry_price - (atr * sl_multiplier);
+   double tp = entry_price + (atr * sl_multiplier * tp_multiplier);
    
    // Normalize prices
    sl = NormalizeDouble(sl, _Digits);
@@ -375,14 +430,28 @@ void ExecuteBuyOrder(double probability)
 //+------------------------------------------------------------------+
 //| Execute sell order                                                |
 //+------------------------------------------------------------------+
-void ExecuteSellOrder(double probability)
+void ExecuteSellOrder(double probability, CONFIDENCE_LEVEL confidence)
 {
    double entry_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double atr = g_FeatureBuilder.GetATRNormalized() * entry_price / 10000.0;
    
+   // Confidence-based SL/TP adjustments (v11)
+   double sl_multiplier = InpSLMultiplier;
+   double tp_multiplier = InpTPRatio;
+   
+   if(confidence == CONFIDENCE_LOW)
+   {
+      sl_multiplier *= 0.8;  // Tighter SL
+      tp_multiplier *= 1.2;  // Wider TP (better R:R required)
+   }
+   else if(confidence == CONFIDENCE_HIGH)
+   {
+      tp_multiplier *= 1.5;  // Let winners run
+   }
+   
    // Calculate SL and TP
-   double sl = entry_price + (atr * InpSLMultiplier);
-   double tp = entry_price - (atr * InpSLMultiplier * InpTPRatio);
+   double sl = entry_price + (atr * sl_multiplier);
+   double tp = entry_price - (atr * sl_multiplier * tp_multiplier);
    
    // Normalize prices
    sl = NormalizeDouble(sl, _Digits);
@@ -634,5 +703,20 @@ void OnTrade()
          }
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Evaluate AI confidence level (v11)                               |
+//+------------------------------------------------------------------+
+CONFIDENCE_LEVEL EvaluateConfidence(double probability)
+{
+   if(probability < InpMinConfidenceLow)
+      return CONFIDENCE_NONE;
+   else if(probability >= InpMinConfidenceLow && probability < InpConfidenceMedium)
+      return CONFIDENCE_LOW;
+   else if(probability >= InpConfidenceMedium && probability < InpConfidenceHigh)
+      return CONFIDENCE_MEDIUM;
+   else
+      return CONFIDENCE_HIGH;
 }
 //+------------------------------------------------------------------+
