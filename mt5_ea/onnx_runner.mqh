@@ -105,7 +105,7 @@ bool CONNXRunner::LoadModel(string model_path, string scaler_path)
    }
    
    // Load the ONNX model
-   m_model_handle = OnnxCreateFromFile(model_path, ONNX_DEFAULT);
+   m_model_handle = OnnxCreate(model_path);
    
    if(m_model_handle == INVALID_HANDLE)
    {
@@ -314,7 +314,7 @@ double CONNXRunner::Predict(double &features[])
    matrix output_matrix;
    
    // Run ONNX inference
-   if(!OnnxRun(m_model_handle, ONNX_DEFAULT, input_matrix, output_matrix))
+   if(!OnnxRun(m_model_handle, input_matrix, output_matrix))
    {
       Print("ERROR: ONNX inference failed. Error code: ", GetLastError());
       return 0.0;

@@ -13,9 +13,10 @@ Features include:
 - Session encoding (broker hour, session ID)
 - Market conditions (spread, candle compression)
 - Derived features (momentum strength, relative kumo strength)
+- Market regime detection (v11)
 
 Author: TrendAI Development Team
-Version: 10.0
+Version: 11.0
 """
 
 import pandas as pd
@@ -23,6 +24,26 @@ import numpy as np
 from typing import Dict, Tuple
 import warnings
 warnings.filterwarnings('ignore')
+
+# Feature versioning (v11)
+FEATURE_VERSION = "1.0.0"
+FEATURE_LIST_V1 = [
+    'tenkan_slope',
+    'kijun_slope',
+    'cloud_thickness',
+    'price_kumo_distance',
+    'chikou_relative_position',
+    'atr_normalized',
+    'adx',
+    'tick_volume_spike',
+    'broker_hour',
+    'session_id',
+    'spread',
+    'candle_compression',
+    'momentum_strength',  # Derived: tenkan_slope * ADX
+    'relative_kumo_strength',  # Derived: cloud_thickness / ATR
+    'regime_flag'  # NEW (v11): market regime detection
+]
 
 
 class FeatureEngineer:
@@ -38,25 +59,11 @@ class FeatureEngineer:
         self.atr_period = 14
         self.adx_period = 14
         self.feature_names = self._get_feature_names()
+        self.feature_version = FEATURE_VERSION
     
     def _get_feature_names(self) -> list:
         """Return list of feature names in order."""
-        return [
-            'tenkan_slope',
-            'kijun_slope', 
-            'cloud_thickness',
-            'price_kumo_distance',
-            'chikou_relative_position',
-            'atr_normalized',
-            'adx',
-            'tick_volume_spike',
-            'broker_hour',
-            'session_id',
-            'spread',
-            'candle_compression',
-            'momentum_strength',  # Derived: tenkan_slope * ADX
-            'relative_kumo_strength'  # Derived: cloud_thickness / ATR
-        ]
+        return FEATURE_LIST_V1
     
     def calculate_ichimoku(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -236,6 +243,45 @@ class FeatureEngineer:
         # Feature 14: Relative kumo strength (cloud thickness / ATR)
         df['relative_kumo_strength'] = df['cloud_thickness'] / (df['atr_normalized'] + 0.0001)
         
+        # Feature 15: Market regime detection (v11)
+        df = self.detect_market_regime(df)
+        
+        return df
+    
+    def detect_market_regime(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Classify market state: TREND, RANGE, CHOPPY (v11)
+        Uses ADX and volatility measures
+        
+        Args:
+            df: DataFrame with ADX and ATR features
+            
+        Returns:
+            DataFrame with regime_flag added
+        """
+        df['regime_flag'] = 0  # 0=range (default)
+        
+        # Trend: ADX > 25
+        df.loc[df['adx'] > 25, 'regime_flag'] = 1
+        
+        # Choppy: ATR spike + low ADX
+        df.loc[(df['atr_normalized'] > 1.5) & (df['adx'] < 20), 'regime_flag'] = 2
+        
+        return df
+    
+    def add_feature_metadata(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add feature version and timestamp for tracking (v11)
+        
+        Args:
+            df: DataFrame with features
+            
+        Returns:
+            DataFrame with metadata columns added
+        """
+        from datetime import datetime
+        df['feature_version'] = self.feature_version
+        df['feature_timestamp'] = datetime.now().isoformat()
         return df
     
     def get_feature_vector(self, df: pd.DataFrame) -> np.ndarray:

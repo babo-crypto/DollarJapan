@@ -52,6 +52,7 @@ private:
    void     UpdateLabel(string name, string text, color clr);
    string   GetConfidenceLevel(double probability);
    color    GetProbabilityColor(double probability);
+   string   GetConfidenceString(int confidence_level);
    
 public:
    //--- Constructor / Destructor
@@ -172,6 +173,16 @@ bool CDashboardUI::Initialize(int x, int y, int width, int height)
    
    CreateLabel("RiskLabel", 10, y_offset, "Risk Status:", m_text_color, 9);
    CreateLabel("RiskValue", 150, y_offset, "ACTIVE", m_bullish_color, 9);
+   y_offset += line_height;
+   
+   // v11: AI Confidence row
+   CreateLabel("ConfidenceLabel2", 10, y_offset, "AI Confidence:", m_text_color, 9);
+   CreateLabel("ConfidenceValue2", 150, y_offset, "LOW", m_neutral_color, 9);
+   y_offset += line_height;
+   
+   // v11: Loss Streak row
+   CreateLabel("LossStreakLabel", 10, y_offset, "Loss Streak:", m_text_color, 9);
+   CreateLabel("LossStreakValue", 150, y_offset, "0 / 3", m_neutral_color, 9);
    
    ChartRedraw();
    Print("Dashboard initialized at position (", x, ", ", y, ")");
@@ -329,6 +340,27 @@ void CDashboardUI::Update(string symbol, string timeframe, string session,
    if(risk_status == "LOCKED" || risk_status == "DRAWDOWN") risk_color = m_bearish_color;
    else if(risk_status == "COOLDOWN") risk_color = C'241,196,15';
    UpdateLabel("RiskValue", risk_status, risk_color);
+   
+   // v11: AI Confidence (alternative display based on actual level)
+   // Import confidence from main EA
+   extern CONFIDENCE_LEVEL g_current_confidence;
+   extern double g_current_probability;
+   
+   string conf_str = GetConfidenceString(g_current_confidence);
+   color conf_color = (g_current_confidence >= 3) ? m_bullish_color :  // HIGH
+                      (g_current_confidence >= 2) ? C'241,196,15' :     // MEDIUM
+                      (g_current_confidence >= 1) ? C'255,165,0' : m_neutral_color; // LOW/NONE
+   
+   UpdateLabel("ConfidenceValue2", 
+               conf_str + " (" + DoubleToString(g_current_probability * 100, 1) + "%)", 
+               conf_color);
+   
+   // v11: Loss Streak
+   extern CRiskEngine g_RiskEngine;
+   int losses = g_RiskEngine.GetConsecutiveLosses();
+   color loss_color = (losses >= 2) ? m_bearish_color : m_neutral_color;
+   
+   UpdateLabel("LossStreakValue", IntegerToString(losses) + " / 3", loss_color);
 }
 
 //+------------------------------------------------------------------+
@@ -357,6 +389,21 @@ color CDashboardUI::GetProbabilityColor(double probability)
       return m_neutral_color;
    else
       return m_bearish_color;
+}
+
+//+------------------------------------------------------------------+
+//| Get confidence string from level (v11)                           |
+//+------------------------------------------------------------------+
+string CDashboardUI::GetConfidenceString(int confidence_level)
+{
+   switch(confidence_level)
+   {
+      case 0: return "NONE";
+      case 1: return "LOW";
+      case 2: return "MEDIUM";
+      case 3: return "HIGH";
+      default: return "UNKNOWN";
+   }
 }
 
 //+------------------------------------------------------------------+

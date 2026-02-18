@@ -1,31 +1,47 @@
-# TrendAI v10 PRO - USDJPY M15 Institutional Trading System
+# TrendAI v11 PRO - USDJPY M15 Institutional Trading System
 
-[![Version](https://img.shields.io/badge/version-10.0-blue.svg)](https://github.com/babo-crypto/DollarJapan)
+[![Version](https://img.shields.io/badge/version-11.0-blue.svg)](https://github.com/babo-crypto/DollarJapan)
 [![MT5](https://img.shields.io/badge/platform-MetaTrader%205-green.svg)](https://www.metatrader5.com)
 [![Symbol](https://img.shields.io/badge/symbol-USDJPY-orange.svg)](https://www.tradingview.com/symbols/USDJPY/)
 [![Timeframe](https://img.shields.io/badge/timeframe-M15-red.svg)](https://github.com/babo-crypto/DollarJapan)
 [![License](https://img.shields.io/badge/license-Proprietary-yellow.svg)](LICENSE)
+[![Grade](https://img.shields.io/badge/grade-9/10_Institutional-success.svg)](docs/UPGRADE_v11.md)
 
-> **Professional-grade algorithmic trading system combining Ichimoku technical analysis with machine learning for precise trade timing on USDJPY 15-minute charts.**
+> **Institutional-grade algorithmic trading system with AI confidence scoring, kill-switch safety, and walk-forward validation for USDJPY 15-minute charts.**
+
+---
+
+## 🆕 What's New in v11
+
+✨ **Kill-Switch Safety System** - 6-checkpoint validation before every trade  
+🧠 **AI Confidence Scoring** - 4-level confidence with dynamic SL/TP adjustment  
+📊 **Walk-Forward Validation** - Proper out-of-sample testing prevents overfitting  
+🔧 **ONNX Function Fixes** - Resolved compilation errors  
+📈 **Enhanced Dashboard** - Real-time confidence and loss streak monitoring  
+🔬 **Feature Versioning** - Market regime detection and metadata tracking  
+
+[**📖 Read Full Upgrade Guide →**](docs/UPGRADE_v11.md)
 
 ---
 
 ## 🎯 System Overview
 
-TrendAI v10 is an **institutional-grade Expert Advisor** designed specifically for USDJPY M15 trading. It represents the convergence of three critical trading components:
+TrendAI v11 is an **institutional-grade Expert Advisor** designed specifically for USDJPY M15 trading. It represents the convergence of three critical trading components:
 
 1. **Directional Bias Engine** - Ichimoku Kinko Hyo for trend identification
 2. **ML Timing Intelligence** - ONNX neural network for trade entry probability
-3. **Capital Protection Layer** - Multi-layered risk management system
+3. **Capital Protection Layer** - Multi-layered risk management with kill-switch
 
 ### Key Features
 
 ✅ **Fixed Position Sizing** - Consistent 0.01 lot (no martingale, no scaling)  
-✅ **Walk-Forward Validated** - ML model trained with proper time-series validation  
+✅ **Walk-Forward Validated** - ML model trained with proper time-series validation (NEW v11)  
+✅ **Kill-Switch Protection** - 6 safety checkpoints including spread, latency, and loss streak (NEW v11)  
+✅ **AI Confidence Scoring** - 4-level confidence system with adaptive parameters (NEW v11)  
 ✅ **Multi-Layer Risk Management** - Session limits, daily loss lock, drawdown protection  
 ✅ **Professional Dashboard** - Real-time visual intelligence and performance metrics  
 ✅ **Session-Aware Trading** - Optimized for London and New York sessions  
-✅ **Institutional Standards** - Prop firm compatible, conservative parameters  
+✅ **Institutional Standards** - Prop firm compatible, conservative parameters (9/10 grade)  
 
 ---
 

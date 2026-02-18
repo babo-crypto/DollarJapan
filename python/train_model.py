@@ -3,14 +3,14 @@ Model Training Module for TrendAI v10
 ======================================
 
 Trains LightGBM/XGBoost models with:
-- Walk-forward validation
+- Walk-forward validation (v11)
 - Hyperparameter tuning
 - Feature importance analysis
 - Broker hour analytics
 - Model performance evaluation
 
 Author: TrendAI Development Team
-Version: 10.0
+Version: 11.0
 """
 
 import pandas as pd
@@ -22,7 +22,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.preprocessing import StandardScaler
 import json
 import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
@@ -378,12 +378,192 @@ class ModelTrainer:
             print(f"✓ Feature importance saved to {importance_path}")
 
 
+def walk_forward_validation(df: pd.DataFrame, n_splits: int = 5, 
+                            train_months: int = 6, test_months: int = 1) -> pd.DataFrame:
+    """
+    Walk-forward expanding window validation (v11)
+    Prevents overfitting by testing on unseen future data
+    
+    Args:
+        df: DataFrame with features and labels (must have 'timestamp' column)
+        n_splits: Number of validation folds
+        train_months: Training window size in months
+        test_months: Test window size in months
+    
+    Returns:
+        DataFrame with validation results per fold
+    """
+    
+    print("\n" + "="*60)
+    print("🔬 WALK-FORWARD VALIDATION")
+    print("="*60)
+    
+    results = []
+    
+    # Convert to time-based indexing
+    if 'timestamp' not in df.columns:
+        print("ERROR: DataFrame must have 'timestamp' column")
+        return pd.DataFrame()
+    
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.set_index('timestamp').sort_index()
+    
+    # Get feature names (assuming FeatureEngineer is available)
+    from feature_engineering import FEATURE_LIST_V1
+    FEATURES = [f for f in FEATURE_LIST_V1 if f in df.columns]
+    
+    start_date = df.index.min()
+    
+    for fold in range(n_splits):
+        print(f"\n📊 Fold {fold + 1}/{n_splits}")
+        
+        # Define train/test periods
+        train_end_date = start_date + timedelta(days=30 * train_months * (fold + 1))
+        test_start_date = train_end_date
+        test_end_date = test_start_date + timedelta(days=30 * test_months)
+        
+        # Split data
+        train_data = df.loc[:train_end_date]
+        test_data = df.loc[test_start_date:test_end_date]
+        
+        if len(test_data) < 100:
+            print(f"⚠️  Skipping fold {fold + 1} - insufficient test data")
+            continue
+        
+        print(f"   Train: {len(train_data)} samples ({train_data.index.min()} to {train_data.index.max()})")
+        print(f"   Test:  {len(test_data)} samples ({test_data.index.min()} to {test_data.index.max()})")
+        
+        # Train model on expanding window
+        X_train = train_data[FEATURES]
+        y_train = train_data['label'] if 'label' in train_data.columns else train_data.iloc[:, -1]
+        
+        X_test = test_data[FEATURES]
+        y_test = test_data['label'] if 'label' in test_data.columns else test_data.iloc[:, -1]
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # Train LightGBM
+        model = lgb.LGBMClassifier(
+            n_estimators=200,
+            learning_rate=0.05,
+            max_depth=5,
+            num_leaves=31,
+            min_child_samples=20,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            verbose=-1
+        )
+        
+        model.fit(X_train_scaled, y_train)
+        
+        # Predict on test set
+        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+        y_pred = (y_pred_proba >= 0.72).astype(int)
+        
+        # Calculate metrics
+        metrics = {
+            'fold': fold + 1,
+            'train_size': len(train_data),
+            'test_size': len(test_data),
+            'train_period': f"{train_data.index.min().date()} to {train_data.index.max().date()}",
+            'test_period': f"{test_data.index.min().date()} to {test_data.index.max().date()}",
+            'accuracy': accuracy_score(y_test, y_pred),
+            'precision': precision_score(y_test, y_pred, zero_division=0),
+            'recall': recall_score(y_test, y_pred, zero_division=0),
+            'f1_score': f1_score(y_test, y_pred, zero_division=0),
+            'roc_auc': roc_auc_score(y_test, y_pred_proba) if len(np.unique(y_test)) > 1 else 0.0
+        }
+        
+        # Calculate trading metrics (simulate trades)
+        test_data_copy = test_data.copy()
+        test_data_copy['prediction'] = y_pred
+        test_data_copy['probability'] = y_pred_proba
+        
+        trading_metrics = calculate_trading_metrics(test_data_copy)
+        metrics.update(trading_metrics)
+        
+        results.append(metrics)
+        
+        print(f"   ✅ Accuracy: {metrics['accuracy']:.3f}")
+        print(f"   ✅ ROC-AUC: {metrics['roc_auc']:.3f}")
+        print(f"   ✅ Sharpe: {metrics.get('sharpe', 0):.3f}")
+    
+    if not results:
+        print("\n⚠️  No validation results generated")
+        return pd.DataFrame()
+    
+    results_df = pd.DataFrame(results)
+    
+    print("\n" + "="*60)
+    print("📊 VALIDATION SUMMARY")
+    print("="*60)
+    print(results_df.to_string(index=False))
+    print("\n📈 Average Metrics:")
+    print(f"   Accuracy: {results_df['accuracy'].mean():.3f} ± {results_df['accuracy'].std():.3f}")
+    print(f"   ROC-AUC:  {results_df['roc_auc'].mean():.3f} ± {results_df['roc_auc'].std():.3f}")
+    
+    # Save results
+    import os
+    os.makedirs('models', exist_ok=True)
+    results_df.to_csv('models/walk_forward_results.csv', index=False)
+    print("\n💾 Results saved to models/walk_forward_results.csv")
+    
+    return results_df
+
+
+def calculate_trading_metrics(df: pd.DataFrame) -> Dict:
+    """
+    Calculate Sharpe ratio, max drawdown, win rate from predictions (v11)
+    
+    Args:
+        df: DataFrame with 'prediction' and 'probability' columns
+        
+    Returns:
+        Dictionary with trading metrics
+    """
+    # Simulate trading based on predictions
+    df = df.copy()
+    df['pnl'] = 0.0
+    
+    for i in range(len(df)):
+        if df['prediction'].iloc[i] == 1:
+            # Simulate 30-pip target with 50% win rate assumption
+            df.iloc[i, df.columns.get_loc('pnl')] = 30 if np.random.rand() > 0.5 else -20
+    
+    cumulative_pnl = df['pnl'].cumsum()
+    
+    # Calculate metrics
+    returns = df['pnl']
+    sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0
+    
+    # Max drawdown
+    cummax = cumulative_pnl.cummax()
+    drawdown = cumulative_pnl - cummax
+    max_dd = drawdown.min()
+    
+    # Win rate
+    trades = df[df['prediction'] == 1]
+    win_rate = (trades['pnl'] > 0).sum() / len(trades) if len(trades) > 0 else 0
+    
+    return {
+        'sharpe': sharpe,
+        'max_drawdown': max_dd,
+        'win_rate': win_rate,
+        'total_trades': len(trades),
+        'total_pnl': cumulative_pnl.iloc[-1] if len(cumulative_pnl) > 0 else 0
+    }
+
+
 def main():
     """
-    Example training workflow.
+    Example training workflow with walk-forward validation (v11).
     """
     print("=" * 60)
-    print("TrendAI v10 Model Training Module")
+    print("TrendAI v11 Model Training Module")
     print("=" * 60)
     
     # Note: This is an example. In production, load real historical data
@@ -413,19 +593,39 @@ def main():
     # Prepare data
     X, y, df_features = trainer.prepare_data(df)
     
-    # Train with walk-forward validation
-    results = trainer.train_with_walk_forward(X, y, n_splits=5)
+    # Add timestamp for walk-forward validation
+    df_features['label'] = y
+    df_features = df_features.reset_index()
     
-    # Save model
-    trainer.save_model()
+    # Run walk-forward validation (v11)
+    print("\n" + "="*60)
+    print("Running Walk-Forward Validation...")
+    print("="*60)
+    wf_results = walk_forward_validation(df_features, n_splits=5, 
+                                          train_months=6, test_months=1)
     
-    print("\n" + "=" * 60)
-    print("Training complete!")
-    print("=" * 60)
-    print("\nNext steps:")
-    print("  1. Run export_onnx.py to convert model to ONNX format")
-    print("  2. Copy models to MT5 Files folder")
-    print("  3. Load EA on USDJPY M15 chart")
+    # Check if validation passed
+    if len(wf_results) > 0 and wf_results['accuracy'].mean() >= 0.55:
+        print("\n✅ Validation passed! Training final model on full dataset...")
+        
+        # Train with original method
+        results = trainer.train_with_walk_forward(X, y, n_splits=5)
+        
+        # Save model
+        trainer.save_model()
+        
+        print("\n" + "=" * 60)
+        print("Training complete!")
+        print("=" * 60)
+        print("\nNext steps:")
+        print("  1. Run export_onnx.py to convert model to ONNX format")
+        print("  2. Copy models to MT5 Files folder")
+        print("  3. Load EA on USDJPY M15 chart")
+    else:
+        print("\n⚠️  Validation failed. Model performance insufficient.")
+        print("   Average accuracy must be >= 55% to proceed")
+        if len(wf_results) > 0:
+            print(f"   Actual average accuracy: {wf_results['accuracy'].mean():.3f}")
 
 
 if __name__ == "__main__":

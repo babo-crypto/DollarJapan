@@ -18,11 +18,15 @@
 //+------------------------------------------------------------------+
 enum ENUM_RISK_STATE
 {
-   RISK_STATE_ACTIVE = 0,     // Normal trading allowed
-   RISK_STATE_LOCKED = 1,     // Daily loss limit reached
-   RISK_STATE_COOLDOWN = 2,   // Cooldown period after loss
-   RISK_STATE_DRAWDOWN = 3,   // Maximum drawdown exceeded
-   RISK_STATE_VOLATILITY = 4  // Excessive volatility detected
+   RISK_STATE_ACTIVE = 0,          // Normal trading allowed
+   RISK_STATE_LOCKED = 1,          // Daily loss limit reached
+   RISK_STATE_COOLDOWN = 2,        // Cooldown period after loss
+   RISK_STATE_DRAWDOWN = 3,        // Maximum drawdown exceeded
+   RISK_STATE_VOLATILITY = 4,      // Excessive volatility detected
+   RISK_STATE_LOCKED_ONNX_FAIL = 5,     // ONNX model failure
+   RISK_STATE_LOCKED_SPREAD_SPIKE = 6,  // Spread too high
+   RISK_STATE_LOCKED_LATENCY = 7,       // AI inference too slow
+   RISK_STATE_LOCKED_LOSS_STREAK = 8    // Too many consecutive losses
 };
 
 //+------------------------------------------------------------------+
@@ -62,6 +66,13 @@ private:
    // ATR handles for volatility check
    int      m_atr_handle;
    int      m_atr_slow_handle;
+   
+   // Kill-switch parameters (v11)
+   int      m_consecutive_losses;
+   int      m_max_consecutive_losses;
+   double   m_max_allowed_spread;
+   double   m_max_inference_latency_ms;
+   double   m_max_daily_loss_usd;
    
    //--- Private methods
    void     UpdateDailyTracking();
@@ -109,6 +120,16 @@ public:
    double   GetTodayPnL() { return m_today_pnl; }
    int      GetCooldownRemaining() { return m_cooldown_remaining; }
    double   GetCurrentDrawdown();
+   double   GetDailyPnL() { return m_today_pnl; }
+   double   GetCurrentDrawdownPercent() { return GetCurrentDrawdown(); }
+   int      GetConsecutiveLosses() { return m_consecutive_losses; }
+   
+   //--- Kill-switch system (v11)
+   bool     CheckKillSwitch();
+   void     SetMaxConsecutiveLosses(int max_losses) { m_max_consecutive_losses = max_losses; }
+   void     SetMaxAllowedSpread(double max_spread) { m_max_allowed_spread = max_spread; }
+   void     SetMaxInferenceLatency(double max_latency_ms) { m_max_inference_latency_ms = max_latency_ms; }
+   void     SetMaxDailyLossUSD(double max_loss_usd) { m_max_daily_loss_usd = max_loss_usd; }
 };
 
 //+------------------------------------------------------------------+
@@ -144,6 +165,13 @@ CRiskEngine::CRiskEngine()
    
    m_atr_handle = INVALID_HANDLE;
    m_atr_slow_handle = INVALID_HANDLE;
+   
+   // Initialize kill-switch parameters (v11)
+   m_consecutive_losses = 0;
+   m_max_consecutive_losses = 3;          // Stop after 3 losses in a row
+   m_max_allowed_spread = 3.0;            // 3 pips for USDJPY
+   m_max_inference_latency_ms = 500.0;    // 500ms max AI response time
+   m_max_daily_loss_usd = 100.0;          // $100 max daily loss
 }
 
 //+------------------------------------------------------------------+
@@ -298,6 +326,16 @@ void CRiskEngine::OnTradeClosed(double profit_loss)
 {
    m_today_pnl += profit_loss;
    
+   // Track consecutive losses (v11)
+   if(profit_loss < 0)
+   {
+      m_consecutive_losses++;
+   }
+   else if(profit_loss > 0)
+   {
+      m_consecutive_losses = 0;  // Reset on profit
+   }
+   
    // If loss, start cooldown
    if(profit_loss < 0)
    {
@@ -306,6 +344,7 @@ void CRiskEngine::OnTradeClosed(double profit_loss)
       m_current_state = RISK_STATE_COOLDOWN;
       
       Print("Trade closed with loss: ", profit_loss, ". Cooldown started: ", m_cooldown_candles, " candles");
+      Print("Consecutive losses: ", m_consecutive_losses);
    }
    else
    {
@@ -364,6 +403,9 @@ void CRiskEngine::ResetDailyCounters()
    // Reset risk state if it was daily locked
    if(m_current_state == RISK_STATE_LOCKED)
       m_current_state = RISK_STATE_ACTIVE;
+   
+   // Reset consecutive losses on new day (v11)
+   m_consecutive_losses = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -474,12 +516,16 @@ string CRiskEngine::GetRiskStateString()
 {
    switch(m_current_state)
    {
-      case RISK_STATE_ACTIVE:     return "Active";
-      case RISK_STATE_LOCKED:     return "Locked";
-      case RISK_STATE_COOLDOWN:   return "Cooldown";
-      case RISK_STATE_DRAWDOWN:   return "Drawdown";
-      case RISK_STATE_VOLATILITY: return "High Volatility";
-      default:                    return "Unknown";
+      case RISK_STATE_ACTIVE:              return "Active";
+      case RISK_STATE_LOCKED:              return "Locked: Daily Loss";
+      case RISK_STATE_COOLDOWN:            return "Cooldown";
+      case RISK_STATE_DRAWDOWN:            return "Locked: Drawdown";
+      case RISK_STATE_VOLATILITY:          return "High Volatility";
+      case RISK_STATE_LOCKED_ONNX_FAIL:    return "Locked: ONNX Fail";
+      case RISK_STATE_LOCKED_SPREAD_SPIKE: return "Locked: Spread Spike";
+      case RISK_STATE_LOCKED_LATENCY:      return "Locked: High Latency";
+      case RISK_STATE_LOCKED_LOSS_STREAK:  return "Locked: Loss Streak";
+      default:                             return "Unknown";
    }
 }
 
@@ -495,5 +541,70 @@ double CRiskEngine::GetCurrentDrawdown()
       return 0.0;
    
    return (drawdown / m_session_peak_equity) * 100.0;
+}
+
+//+------------------------------------------------------------------+
+//| Check kill-switch conditions (v11)                               |
+//+------------------------------------------------------------------+
+bool CRiskEngine::CheckKillSwitch()
+{
+   // Import ONNX runner for health check
+   extern CONNXRunner g_ONNXRunner;
+   
+   // 1. ONNX health check
+   if(!g_ONNXRunner.IsModelLoaded())
+   {
+      Alert("🚨 KILL-SWITCH: ONNX model failed to load!");
+      m_current_state = RISK_STATE_LOCKED_ONNX_FAIL;
+      return false;
+   }
+   
+   // 2. Spread spike protection
+   double spread_points = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - 
+                           SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
+   
+   if(spread_points > m_max_allowed_spread * 10.0)  // Convert pips to points
+   {
+      Print("🚨 KILL-SWITCH: Spread too high: ", DoubleToString(spread_points / 10.0, 1), " pips");
+      m_current_state = RISK_STATE_LOCKED_SPREAD_SPIKE;
+      return false;
+   }
+   
+   // 3. Latency watchdog
+   double avg_latency = g_ONNXRunner.GetAvgInferenceTime();
+   if(avg_latency > m_max_inference_latency_ms)
+   {
+      Alert("🚨 KILL-SWITCH: AI inference too slow: ", DoubleToString(avg_latency, 1), "ms");
+      m_current_state = RISK_STATE_LOCKED_LATENCY;
+      return false;
+   }
+   
+   // 4. Daily loss lock
+   if(GetDailyPnL() <= -m_max_daily_loss_usd)
+   {
+      Alert("🚨 KILL-SWITCH: Daily loss limit reached!");
+      m_current_state = RISK_STATE_LOCKED;
+      return false;
+   }
+   
+   // 5. Drawdown protection
+   double current_dd = GetCurrentDrawdownPercent();
+   if(current_dd >= m_max_drawdown_pct)
+   {
+      Alert("🚨 KILL-SWITCH: Max drawdown reached: ", DoubleToString(current_dd, 2), "%");
+      m_current_state = RISK_STATE_DRAWDOWN;
+      return false;
+   }
+   
+   // 6. Loss streak protection
+   if(m_consecutive_losses >= m_max_consecutive_losses)
+   {
+      Alert("🚨 KILL-SWITCH: Too many consecutive losses: ", m_consecutive_losses);
+      m_current_state = RISK_STATE_LOCKED_LOSS_STREAK;
+      return false;
+   }
+   
+   m_current_state = RISK_STATE_ACTIVE;
+   return true;
 }
 //+------------------------------------------------------------------+
