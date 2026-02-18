@@ -548,9 +548,6 @@ double CRiskEngine::GetCurrentDrawdown()
 //+------------------------------------------------------------------+
 bool CRiskEngine::CheckKillSwitch()
 {
-   // Import ONNX runner for health check
-   extern CONNXRunner g_ONNXRunner;
-   
    // 1. ONNX health check
    if(!g_ONNXRunner.IsModelLoaded())
    {

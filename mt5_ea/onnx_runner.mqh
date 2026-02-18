@@ -105,7 +105,7 @@ bool CONNXRunner::LoadModel(string model_path, string scaler_path)
    }
    
    // Load the ONNX model
-   m_model_handle = OnnxCreate(model_path);
+   m_model_handle = OnnxCreateFromFile(model_path, ONNX_DEFAULT);
    
    if(m_model_handle == INVALID_HANDLE)
    {
@@ -301,51 +301,72 @@ double CONNXRunner::Predict(double &features[])
    // Normalize features
    NormalizeFeatures(normalized_features);
    
-   // Prepare input matrix for ONNX (shape: [1, num_features])
-   matrix input_matrix;
-   input_matrix.Init(1, m_num_features);
-   
+   // Define input shape [1, num_features] - must be done before OnnxRun
+   ulong input_shape[] = {1, (ulong)m_num_features};
+   if(!OnnxSetInputShape(m_model_handle, 0, input_shape))
+   {
+      Print("ERROR: Failed to set ONNX input shape. Error: ", GetLastError());
+      return 0.0;
+   }
+
+   // Define output shape [1, 1] for single probability output
+   // Try [1,2] first for binary classification, fall back to [1,1]
+   ulong output_shape_2[] = {1, 2};
+   ulong output_shape_1[] = {1, 1};
+   bool output_is_binary = OnnxSetOutputShape(m_model_handle, 0, output_shape_2);
+   if(!output_is_binary)
+   {
+      if(!OnnxSetOutputShape(m_model_handle, 0, output_shape_1))
+      {
+         Print("WARNING: Could not set output shape, continuing anyway");
+      }
+   }
+
+   // Prepare input as vectorf (float type required by ONNX)
+   matrixf input_matf;
+   input_matf.Init(1, m_num_features);
    for(int i = 0; i < m_num_features; i++)
    {
-      input_matrix[0][i] = normalized_features[i];
+      input_matf[0][i] = (float)normalized_features[i];
    }
-   
-   // Prepare output matrix
-   matrix output_matrix;
-   
-   // Run ONNX inference
-   if(!OnnxRun(m_model_handle, input_matrix, output_matrix))
+
+   // Prepare output
+   matrixf output_matf;
+   if(output_is_binary)
+      output_matf.Init(1, 2);
+   else
+      output_matf.Init(1, 1);
+
+   // Run ONNX inference using the correct API
+   if(!OnnxRun(m_model_handle, ONNX_DEFAULT, input_matf, output_matf))
    {
       Print("ERROR: ONNX inference failed. Error code: ", GetLastError());
       return 0.0;
    }
-   
+
    // Calculate inference time
    uint end_time = GetTickCount();
    double inference_time = (double)(end_time - start_time);
-   
+
    // Update performance metrics
    m_inference_count++;
    m_avg_inference_time_ms = (m_avg_inference_time_ms * (m_inference_count - 1) + inference_time) / m_inference_count;
-   
+
    // Extract prediction probability
-   // For binary classification: output should be shape [1, 2] or [1, 1]
    double probability = 0.0;
-   
-   if(output_matrix.Cols() == 2)
+
+   if(output_matf.Cols() == 2)
    {
-      // Two-class output: take the positive class probability
-      probability = output_matrix[0][1];
+      probability = (double)output_matf[0][1];
    }
-   else if(output_matrix.Cols() == 1)
+   else if(output_matf.Cols() == 1)
    {
-      // Single output: direct probability
-      probability = output_matrix[0][0];
+      probability = (double)output_matf[0][0];
    }
    else
    {
       Print("WARNING: Unexpected output shape from ONNX model");
-      probability = output_matrix[0][0];
+      probability = (double)output_matf[0][0];
    }
    
    // Clamp probability to [0, 1]
